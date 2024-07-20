@@ -1,0 +1,35 @@
+<html> 
+<head> 
+<title>Inductor design report</title>
+<style>
+table, th, td {
+  border: 0px solid black;
+  border-collapse: collapse;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+</style>
+</head> 
+<body>
+<h2>Buck converter</h2>
+<table>
+<tr><td>Input voltage</td><td><b>Vin</b></td><td>24.0 V</td></tr>
+<tr><td>Output voltage</td><td><b>Vout</b></td><td>12.0 V</td></tr>
+<tr><td>Output current</td><td><b>Iout</b></td><td>20.000 A</td></tr>
+<tr><td>Frequency</td><td><b>f</b></td><td>80000 Hz</td></tr>
+<tr><td>Duty cycle</td><td><b>D.C.</b></td><td>50.0 %</td></tr>
+<tr><td>Ripple current</td><td><b>ΔI</b></td><td>4.323 A</td></tr>
+<tr><td>Peak current</td><td><b>Ipk</b></td><td>22.161 A</td></tr>
+<tr><td>Expected inductor's value</td><td><b>L</b></td><td>17.4 uH</td></tr>
+<tr><td>Peak flux density</td><td><b>Bpk</b></td><td>0.0219 T</td><td>(219 gauss)</td></tr>
+<tr><td>Peak magnetizing force</td><td><b>N</b></td><td>6829 A/m</td><td>(85.8 oersteds)</td></tr>
+</table>
+<p>
+Permeability will decrease from initial value. Please consult 'permeability vs magnetizing force' curve from datasheet.
+Than update expected L value and calculate again. Do 2 or 3 iterations to get closer to the real values.
+</p>
+<p>
+Consult material datasheet to determine core loss (W/m^3 times core volume).
+</p>
+</body> 
+</html> 
