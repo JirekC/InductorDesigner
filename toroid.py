@@ -86,6 +86,7 @@ def calculate_all() :
         # wire
         wire_dia = check_entry(e_wire_D, "m", 1)
         wire_ro = check_entry(e_wire_ro, "", 1)
+        wire_num = check_entry(e_wire_num, "", 1)
         # inductor / converter
         v_in = check_entry(e_Vin, "V", 1)
         v_out = check_entry(e_Vout, "V", 1)
@@ -109,9 +110,12 @@ def calculate_all() :
     n_amp_m = (turns * i_pk) / ef_length
 
     # wire loss
-    wire_area = math.pi * wire_dia * 0.25
-    wire_ohm_per_m = wire_ro / wire_area
-    # TODO: wire length + power loss
+    single_turn_length = out_dia - inn_dia + 2.0 * height # linear regions
+    single_turn_length += 2.0 * math.pi * (wire_dia * 0.5) # 4 corners
+    wire_length = single_turn_length * turns
+    wire_area = math.pi * wire_dia * wire_dia * 0.25 * wire_num
+    wire_r = wire_ro * wire_length / wire_area
+    wire_loss = wire_r * i_out * i_out # approx
 
     # create HTML report
     html = f"""<html> 
@@ -128,7 +132,7 @@ table, th, td {{
 </head> 
 <body>
 <h2>Synchronous buck converter</h2>
-<p>Toroidal core <b>{core_name}</b> with single-layer winding.</p>
+<p>Toroidal core <b>{e_name.get()}</b> with single-layer winding.</p>
 <table>
 <tr><td>Input voltage</td><td><b>Vin</b></td><td>{v_in:.1f} V</td></tr>
 <tr><td>Output voltage</td><td><b>Vout</b></td><td>{v_out:.1f} V</td></tr>
@@ -137,17 +141,24 @@ table, th, td {{
 <tr><td>Duty cycle</td><td><b>D.C.</b></td><td>{(duty_cycle*1e2):.1f} %</td></tr>
 <tr><td>Ripple current</td><td><b>ΔI</b></td><td>{d_i:.3f} A</td></tr>
 <tr><td>Peak current</td><td><b>Ipk</b></td><td>{i_pk:.3f} A</td></tr>
-<tr><td>Expected inductor value</td><td><b>L</b></td><td>{(induct*1e6):.1f} uH</td></tr>
+<tr><td>Expected inductor value</td><td><b>L</b></td><td>{(induct*1e6):.1f} uH</td><td>(when Ipk applied)</td></tr>
 <tr><td>Peak flux density</td><td><b>Bpk</b></td><td>{b_tesla:.4f} T</td><td>({(b_tesla*1e4):.0f} gauss)</td></tr>
 <tr><td>Peak magnetizing force</td><td><b>N</b></td><td>{n_amp_m:.0f} A/m</td><td>({(n_amp_m*4.0*math.pi/1e3):.1f} oersteds)</td></tr>
+<tr><td>Winding cross area</td><td><b>Aw</b></td><td>{(wire_area*1e6):.4f} mm^2</td></tr>
+<tr><td>Winding length</td><td><b>lw</b></td><td>{wire_length:.3f} m</td></tr>
+<tr><td>Winding resistance</td><td><b>Rw</b></td><td>{(wire_r * 1e3):.0f} mΩ</td></tr>
+<tr><td>Winding loss</td><td><b>Pw</b></td><td>{wire_loss:.3f} W</td></tr>
+
 </table>
-<p>
-Permeability will decrease from initial value. Please consult 'permeability vs magnetizing force' curve from datasheet.
+<small><p><b>NOTE:</b>
+<br>
+- Permeability will decrease from initial value. Please consult 'permeability vs magnetizing force' curve from datasheet.
 Than update expected L value and calculate again. Do 2 or 3 iterations to get closer to the real values.
-</p>
-<p>
-Consult material datasheet to determine core loss (W/m^3 times core volume).
-</p>
+<br>
+- Consult material datasheet to determine core loss for calculated Bpk (W/m^3 times core volume).
+<br>
+- Calculated wire length is ideal value for single-layer winding, please add approx. 10% margin.
+</p></small>
 </body> 
 </html> 
 """
@@ -186,6 +197,7 @@ def load_cfg() :
     except:
         print("No config file found.")
         return False
+    entry_set_text(e_name, cfg.get('e_name'))
     entry_set_text(e_OD, cfg.get('e_OD'))
     entry_set_text(e_ID, cfg.get('e_ID'))
     entry_set_text(e_HT, cfg.get('e_HT'))
@@ -193,6 +205,7 @@ def load_cfg() :
     entry_set_text(e_le, cfg.get('e_le'))
     entry_set_text(e_wire_D, cfg.get('e_wire_D'))
     entry_set_text(e_wire_ro, cfg.get('e_wire_ro'))
+    entry_set_text(e_wire_num, cfg.get('e_wire_num'))
     entry_set_text(e_Vin, cfg.get('e_Vin'))
     entry_set_text(e_Vout, cfg.get('e_Vout'))
     entry_set_text(e_Iout, cfg.get('e_Iout'))
@@ -203,6 +216,7 @@ def load_cfg() :
     
 def save_cfg() :
     cfg = {
+        'e_name': e_name.get(),
         'e_OD': e_OD.get(),
         'e_ID': e_ID.get(),
         'e_HT': e_HT.get(),
@@ -210,12 +224,13 @@ def save_cfg() :
         'e_le': e_le.get(),
         'e_wire_D': e_wire_D.get(),
         'e_wire_ro': e_wire_ro.get(),
+        'e_wire_num': e_wire_num.get(),
         'e_Vin': e_Vin.get(),
         'e_Vout': e_Vout.get(),
         'e_Iout': e_Iout.get(),
         'e_freq': e_freq.get(),
         'e_N': e_N.get(),
-        'e_L': e_L.get(),
+        'e_L': e_L.get()
     }
     try:
         with open("toroid.configfile", "wb") as f :
@@ -237,6 +252,7 @@ win = tk.Tk()
 ###############
 
 # entry left-labels
+tk.Label(win, text="Core name").grid(sticky=tk.E)
 tk.Label(win, text="OD").grid(sticky=tk.E)
 tk.Label(win, text="ID").grid(sticky=tk.E)
 tk.Label(win, text="HT").grid(sticky=tk.E)
@@ -244,27 +260,29 @@ tk.Label(win, text="Ae").grid(sticky=tk.E)
 tk.Label(win, text="le").grid(sticky=tk.E)
 
 # entries
+e_name = tk.Entry(win,width=10)
+e_name.grid(row=0, column=1, padx=5, pady=5)
 e_OD = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_OD))
-e_OD.grid(row=0, column=1, padx=5, pady=5)
+e_OD.grid(row=1, column=1, padx=5, pady=5)
 e_ID = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_ID))
-e_ID.grid(row=1, column=1, padx=5, pady=5)
+e_ID.grid(row=2, column=1, padx=5, pady=5)
 e_HT = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_HT))
-e_HT.grid(row=2, column=1, padx=5, pady=5)
+e_HT.grid(row=3, column=1, padx=5, pady=5)
 e_Ae = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_Ae))
-e_Ae.grid(row=3, column=1, padx=5, pady=5)
+e_Ae.grid(row=4, column=1, padx=5, pady=5)
 e_le = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_le))
-e_le.grid(row=4, column=1, padx=5, pady=5)
+e_le.grid(row=5, column=1, padx=5, pady=5)
 
 # entry right-labels
-tk.Label(win, text="").grid(row=0, column=2, sticky=tk.W)
 tk.Label(win, text="").grid(row=1, column=2, sticky=tk.W)
 tk.Label(win, text="").grid(row=2, column=2, sticky=tk.W)
-tk.Label(win, text="^2").grid(row=3, column=2, sticky=tk.W)
-tk.Label(win, text="").grid(row=4, column=2, sticky=tk.W)
+tk.Label(win, text="").grid(row=3, column=2, sticky=tk.W)
+tk.Label(win, text="^2").grid(row=4, column=2, sticky=tk.W)
+tk.Label(win, text="").grid(row=5, column=2, sticky=tk.W)
 
 # image
 pi_toroid = tk.PhotoImage(file="img/toroid_dim.png")
-i_toroid = tk.Label(image=pi_toroid).grid(row=0, column=3, rowspan=5, padx=5, pady=5)
+i_toroid = tk.Label(image=pi_toroid).grid(row=1, column=3, rowspan=5, padx=5, pady=5)
 
 #############
 # WIRE DIMS #
@@ -274,21 +292,20 @@ i_toroid = tk.Label(image=pi_toroid).grid(row=0, column=3, rowspan=5, padx=5, pa
 tk.Label(win, text="==WIRE PARAMS==").grid(columnspan=4, sticky=tk.W)
 tk.Label(win, text="Dia").grid(sticky=tk.E)
 tk.Label(win, text="Resistivity").grid(sticky=tk.E)
+tk.Label(win, text="Num wires").grid(sticky=tk.E)
 
 # entries
 e_wire_D = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_wire_D))
-e_wire_D.grid(row=6, column=1, padx=5, pady=5)
+e_wire_D.grid(row=7, column=1, padx=5, pady=5)
 e_wire_ro = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_wire_ro))
-e_wire_ro.grid(row=7, column=1, padx=5, pady=5)
+e_wire_ro.grid(row=8, column=1, padx=5, pady=5)
+e_wire_num = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_wire_num))
+e_wire_num.grid(row=9, column=1, padx=5, pady=5)
 
 # entry right-labels
-tk.Label(win, text="").grid(row=6, column=2, sticky=tk.W)
-tk.Label(win, text="Ω•m").grid(row=7, column=2, sticky=tk.W)
-
-# results
-#tk.Label(win, text="Area = xx mm^2").grid(row=5, column=3, padx=10, sticky=tk.W)
-#tk.Label(win, text="R = xx Ω").grid(row=6, column=3, padx=10, sticky=tk.W)
-#tk.Label(win, text="Power loss = xx W").grid(row=7, column=3, padx=10, sticky=tk.W)
+tk.Label(win, text="").grid(row=7, column=2, sticky=tk.W)
+tk.Label(win, text="Ω•m").grid(row=8, column=2, sticky=tk.W)
+tk.Label(win, text="").grid(row=9, column=2, sticky=tk.W)
 
 ############
 # INDUCTOR #
@@ -305,39 +322,35 @@ tk.Label(win, text="L").grid(sticky=tk.E) # expected
 
 # entries
 e_Vin = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_Vin))
-e_Vin.grid(row=9, column=1, padx=5, pady=5)
+e_Vin.grid(row=11, column=1, padx=5, pady=5)
 e_Vout = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_Vout))
-e_Vout.grid(row=10, column=1, padx=5, pady=5)
+e_Vout.grid(row=12, column=1, padx=5, pady=5)
 e_Iout = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_Iout))
-e_Iout.grid(row=11, column=1, padx=5, pady=5)
+e_Iout.grid(row=13, column=1, padx=5, pady=5)
 e_freq = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_freq))
-e_freq.grid(row=12, column=1, padx=5, pady=5)
+e_freq.grid(row=14, column=1, padx=5, pady=5)
 e_N = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_N))
-e_N.grid(row=13, column=1, padx=5, pady=5)
+e_N.grid(row=15, column=1, padx=5, pady=5)
 e_L = tk.Entry(win,width=10, validate='key', vcmd=lambda:entry_color_reset(e_L))
-e_L.grid(row=14, column=1, padx=5, pady=5)
+e_L.grid(row=16, column=1, padx=5, pady=5)
 
 # entry right-labels
-tk.Label(win, text="").grid(row=9, column=2, sticky=tk.W)
-tk.Label(win, text="").grid(row=10, column=2, sticky=tk.W)
 tk.Label(win, text="").grid(row=11, column=2, sticky=tk.W)
 tk.Label(win, text="").grid(row=12, column=2, sticky=tk.W)
 tk.Label(win, text="").grid(row=13, column=2, sticky=tk.W)
-tk.Label(win, text="(expect.)").grid(row=14, column=2, sticky=tk.W)
-
-# results
-#tk.Label(win, text="Bpk = xyz T").grid(row=9, column=3, padx=10, sticky=tk.W)
-#tk.Label(win, text="Npk = xyz A•m").grid(row=10, column=3, padx=10, sticky=tk.W)
+tk.Label(win, text="").grid(row=14, column=2, sticky=tk.W)
+tk.Label(win, text="").grid(row=15, column=2, sticky=tk.W)
+tk.Label(win, text="(expect.)").grid(row=16, column=2, sticky=tk.W)
 
 # image
 pi_buck = tk.PhotoImage(file="img/sync_buck.png")
-i_buck = tk.Label(image=pi_buck).grid(row=9, column=3, rowspan=6, padx=5, pady=5)
+i_buck = tk.Label(image=pi_buck).grid(row=11, column=3, rowspan=6, padx=5, pady=5)
 
 ###################
 # MASTER'S BUTTON #
 ###################
 
-tk.Button(win, text="Calc it!", command=lambda:calculate_all()).grid(row=15, column=1, sticky=tk.W, padx=5, pady=5)
+tk.Button(win, text="Calc it!", command=lambda:calculate_all()).grid(row=17, column=1, sticky=tk.W, padx=5, pady=5)
 
 load_cfg()
 win.protocol("WM_DELETE_WINDOW", save_cfg)
